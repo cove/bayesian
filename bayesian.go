@@ -87,6 +87,7 @@ type Classifier struct {
 	Classes         []Class
 	learned         int   // docs learned
 	seen            int32 // docs seen
+	words           int32 // words learned
 	datas           map[Class]*classData
 	tfIdf           bool
 	DidConvertTfIdf bool // we can't classify a TF-IDF classifier if we haven't yet
@@ -100,6 +101,7 @@ type serializableClassifier struct {
 	Classes         []Class
 	Learned         int
 	Seen            int
+	Words           int32
 	Datas           map[Class]*classData
 	TfIdf           bool
 	DidConvertTfIdf bool
@@ -181,7 +183,7 @@ func NewClassifierTfIdf(classes ...Class) (c *Classifier) {
 // NewClassifier returns a new classifier. The classes provided
 // should be at least 2 in number and unique, or this method will
 // panic.
-func NewClassifier(classes ...Class) (c *Classifier) {
+func NewClassifier(classes []Class) (c *Classifier) {
 	n := len(classes)
 
 	// check size
@@ -215,6 +217,7 @@ func NewClassifier(classes ...Class) (c *Classifier) {
 // to c.WriteToFile(string).
 func NewClassifierFromFile(name string) (c *Classifier, err error) {
 	file, err := os.Open(name)
+	defer file.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +230,7 @@ func NewClassifierFromReader(r io.Reader) (c *Classifier, err error) {
 	w := new(serializableClassifier)
 	err = dec.Decode(w)
 
-	return &Classifier{w.Classes, w.Learned, int32(w.Seen), w.Datas, w.TfIdf, w.DidConvertTfIdf}, err
+	return &Classifier{w.Classes, w.Learned, int32(w.Seen), w.Words, w.Datas, w.TfIdf, w.DidConvertTfIdf}, err
 }
 
 // getPriors returns the prior probabilities for the
@@ -245,7 +248,7 @@ func (c *Classifier) getPriors() (priors []float64) {
 		for i := 0; i < n; i++ {
 			// compute with smoothing
 			// https://stats.stackexchange.com/questions/108797/in-naive-bayes-why-bother-with-laplace-smoothing-when-we-have-unknown-words-in
-			priors[i] = priors[i] + 1/float64(sum) + float64(len(c.datas))
+			priors[i] = priors[i] + 1/float64(sum) + float64(c.words)
 		}
 	}
 	return
@@ -319,6 +322,7 @@ func (c *Classifier) Learn(document []string, which Class) {
 	for _, word := range document {
 		data.Freqs[word]++
 		data.Total++
+		c.words++
 	}
 	c.learned++
 }
@@ -526,6 +530,7 @@ func (c *Classifier) WordsByClass(class Class) (freqMap map[string]float64) {
 // Serialize this classifier to a file.
 func (c *Classifier) WriteToFile(name string) (err error) {
 	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0644)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -544,6 +549,7 @@ func (c *Classifier) WriteClassToFile(name Class, rootPath string) (err error) {
 	data := c.datas[name]
 	fileName := filepath.Join(rootPath, string(name))
 	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0644)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -555,7 +561,7 @@ func (c *Classifier) WriteClassToFile(name Class, rootPath string) (err error) {
 // Serialize this classifier to GOB and write to Writer.
 func (c *Classifier) WriteTo(w io.Writer) (err error) {
 	enc := gob.NewEncoder(w)
-	err = enc.Encode(&serializableClassifier{c.Classes, c.learned, int(c.seen), c.datas, c.tfIdf, c.DidConvertTfIdf})
+	err = enc.Encode(&serializableClassifier{c.Classes, c.learned, int(c.seen), c.words, c.datas, c.tfIdf, c.DidConvertTfIdf})
 
 	return
 }
@@ -565,6 +571,7 @@ func (c *Classifier) WriteTo(w io.Writer) (err error) {
 func (c *Classifier) ReadClassFromFile(class Class, location string) (err error) {
 	fileName := filepath.Join(location, string(class))
 	file, err := os.Open(fileName)
+	defer file.Close()
 
 	if err != nil {
 		return err
