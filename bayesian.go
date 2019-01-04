@@ -288,6 +288,7 @@ func (c *Classifier) Observe(word string, count int, which Class) {
 	data := c.datas[which]
 	data.Freqs[word] += float64(count)
 	data.Total += count
+	c.words++
 }
 
 // Learn will accept new training documents for
