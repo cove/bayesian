@@ -232,9 +232,6 @@ func NewClassifierFromReader(r io.Reader) (c *Classifier, err error) {
 
 // getPriors returns the prior probabilities for the
 // classes provided -- P(C_j).
-//
-// TODO: There is a way to smooth priors, currently
-// not implemented here.
 func (c *Classifier) getPriors() (priors []float64) {
 	n := len(c.Classes)
 	priors = make([]float64, n, n)
@@ -246,7 +243,9 @@ func (c *Classifier) getPriors() (priors []float64) {
 	}
 	if sum != 0 {
 		for i := 0; i < n; i++ {
-			priors[i] /= float64(sum)
+			// compute with smoothing
+			// https://stats.stackexchange.com/questions/108797/in-naive-bayes-why-bother-with-laplace-smoothing-when-we-have-unknown-words-in
+			priors[i] = priors[i] + 1/float64(sum) + float64(len(c.datas))
 		}
 	}
 	return
